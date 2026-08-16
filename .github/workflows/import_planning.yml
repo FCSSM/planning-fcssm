@@ -11,21 +11,37 @@ permissions:
   contents: write
 
 jobs:
-  test-import:
+  import-planning:
     runs-on: ubuntu-latest
 
     steps:
 
+      # -----------------------------------------------------------------------
+      # 1. Vérification
+      # -----------------------------------------------------------------------
+
       - name: Vérifier le workflow
         run: |
           echo "======================================"
-          echo "✓ GitHub Actions fonctionne"
+          echo "IMPORT DU PLANNING"
           echo "======================================"
           echo "Repository : $GITHUB_REPOSITORY"
           echo "Branch : $GITHUB_REF"
           echo "Commit : $GITHUB_SHA"
+          echo "======================================"
 
-      - name: Afficher les informations reçues
+      # -----------------------------------------------------------------------
+      # 2. Récupération du dépôt
+      # -----------------------------------------------------------------------
+
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # 3. Récupération des données envoyées par Flutter
+      # -----------------------------------------------------------------------
+
+      - name: Récupérer les données
         env:
           VERSION: ${{ github.event.client_payload.version }}
           PLANNING_BASE64: ${{ github.event.client_payload.planning }}
@@ -33,29 +49,142 @@ jobs:
           echo "======================================"
           echo "DONNEES RECUES"
           echo "======================================"
+
           echo "Version : $VERSION"
           echo "Taille Base64 : ${#PLANNING_BASE64} caractères"
+
           echo "======================================"
 
-      - name: Vérifier si un planning a été reçu
+          if [ -z "$PLANNING_BASE64" ]; then
+            echo "ERREUR : aucun planning reçu."
+            exit 1
+          fi
+
+      # -----------------------------------------------------------------------
+      # 4. Décompression
+      # -----------------------------------------------------------------------
+
+      - name: Décompresser le planning
         env:
           PLANNING_BASE64: ${{ github.event.client_payload.planning }}
         run: |
 
-          if [ -z "$PLANNING_BASE64" ]; then
-            echo "Mode test manuel."
-            echo "Aucun planning reçu."
+          echo "======================================"
+          echo "DECOMPRESSION"
+          echo "======================================"
+
+          echo "$PLANNING_BASE64" \
+            | base64 --decode \
+            | gzip -d \
+            > planning.json
+
+          echo "Planning décompressé."
+
+          echo "Taille : $(wc -c < planning.json) octets"
+
+          echo "======================================"
+
+      # -----------------------------------------------------------------------
+      # 5. Vérification du JSON
+      # -----------------------------------------------------------------------
+
+      - name: Vérifier le JSON
+        run: |
+
+          echo "======================================"
+          echo "VALIDATION JSON"
+          echo "======================================"
+
+          if ! jq empty planning.json; then
+            echo "ERREUR : le fichier planning.json n'est pas un JSON valide."
+            exit 1
+          fi
+
+          echo "JSON valide."
+
+          echo "======================================"
+
+      # -----------------------------------------------------------------------
+      # 6. Affichage d'informations
+      # -----------------------------------------------------------------------
+
+      - name: Afficher les informations du planning
+        env:
+          VERSION: ${{ github.event.client_payload.version }}
+        run: |
+
+          echo "======================================"
+          echo "PLANNING"
+          echo "======================================"
+
+          echo "Version : $VERSION"
+
+          echo "Nombre de matchs : $(jq 'length' planning.json)"
+
+          echo "======================================"
+
+      # -----------------------------------------------------------------------
+      # 7. Création du fichier de version
+      # -----------------------------------------------------------------------
+
+      - name: Créer planning_version.json
+        env:
+          VERSION: ${{ github.event.client_payload.version }}
+        run: |
+
+          cat > planning_version.json <<EOF
+          {
+            "version": "$VERSION"
+          }
+          EOF
+
+          echo "planning_version.json créé."
+
+          cat planning_version.json
+
+      # -----------------------------------------------------------------------
+      # 8. Vérification des modifications
+      # -----------------------------------------------------------------------
+
+      - name: Vérifier les fichiers
+        run: |
+
+          echo "======================================"
+          echo "FICHIERS"
+          echo "======================================"
+
+          ls -lh planning.json
+          ls -lh planning_version.json
+
+          echo "======================================"
+
+      # -----------------------------------------------------------------------
+      # 9. Commit et push
+      # -----------------------------------------------------------------------
+
+      - name: Enregistrer le planning
+        run: |
+
+          echo "======================================"
+          echo "ENREGISTREMENT"
+          echo "======================================"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add planning.json
+          git add planning_version.json
+
+          if git diff --cached --quiet; then
+            echo "Aucune modification à enregistrer."
             exit 0
           fi
 
-          echo "$PLANNING_BASE64" | base64 --decode | gzip -d > planning_test.json
+          git commit \
+            -m "Mise à jour du planning"
 
-          echo "Planning décompressé avec succès."
-          echo "Taille : $(wc -c < planning_test.json) octets"
+          git push
 
-      - name: Test terminé
-        run: |
           echo "======================================"
-          echo "✓ TEST TERMINE"
+          echo "✓ PLANNING ENREGISTRE"
           echo "======================================"
-          echo "Aucun fichier du dépôt n'a été modifié."
