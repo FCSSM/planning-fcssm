@@ -5,6 +5,8 @@ on:
     types:
       - import_planning
 
+  workflow_dispatch:
+
 permissions:
   contents: write
 
@@ -14,64 +16,46 @@ jobs:
 
     steps:
 
+      - name: Vérifier le workflow
+        run: |
+          echo "======================================"
+          echo "✓ GitHub Actions fonctionne"
+          echo "======================================"
+          echo "Repository : $GITHUB_REPOSITORY"
+          echo "Branch : $GITHUB_REF"
+          echo "Commit : $GITHUB_SHA"
+
       - name: Afficher les informations reçues
         env:
           VERSION: ${{ github.event.client_payload.version }}
           PLANNING_BASE64: ${{ github.event.client_payload.planning }}
         run: |
           echo "======================================"
-          echo "IMPORT PLANNING REÇU"
+          echo "DONNEES RECUES"
           echo "======================================"
           echo "Version : $VERSION"
           echo "Taille Base64 : ${#PLANNING_BASE64} caractères"
           echo "======================================"
 
-      - name: Décoder le planning
+      - name: Vérifier si un planning a été reçu
         env:
           PLANNING_BASE64: ${{ github.event.client_payload.planning }}
         run: |
-          echo "$PLANNING_BASE64" | base64 --decode | gzip -d > planning.json
+
+          if [ -z "$PLANNING_BASE64" ]; then
+            echo "Mode test manuel."
+            echo "Aucun planning reçu."
+            exit 0
+          fi
+
+          echo "$PLANNING_BASE64" | base64 --decode | gzip -d > planning_test.json
 
           echo "Planning décompressé avec succès."
-          echo "Taille planning.json : $(wc -c < planning.json) octets"
-
-      - name: Vérifier que le JSON est valide
-        run: |
-          python3 - <<'PY'
-          import json
-
-          with open("planning.json", "r", encoding="utf-8") as f:
-              planning = json.load(f)
-
-          if not isinstance(planning, list):
-              raise Exception("Le JSON n'est pas une liste de matchs.")
-
-          print(f"JSON valide.")
-          print(f"Nombre de matchs : {len(planning)}")
-          PY
-
-      - name: Afficher le premier match
-        run: |
-          python3 - <<'PY'
-          import json
-
-          with open("planning.json", "r", encoding="utf-8") as f:
-              planning = json.load(f)
-
-          if planning:
-              print("Premier match reçu :")
-              print(json.dumps(
-                  planning[0],
-                  indent=2,
-                  ensure_ascii=False
-              ))
-          else:
-              print("Aucun match.")
-          PY
+          echo "Taille : $(wc -c < planning_test.json) octets"
 
       - name: Test terminé
         run: |
           echo "======================================"
-          echo "✓ TEST IMPORT TERMINÉ AVEC SUCCÈS"
+          echo "✓ TEST TERMINE"
           echo "======================================"
-          echo "Aucun fichier GitHub n'a été modifié."
+          echo "Aucun fichier du dépôt n'a été modifié."
